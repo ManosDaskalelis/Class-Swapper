@@ -29,6 +29,9 @@ function separateDirsFromFiles(dir) {
 //#endregion
 //#region Find valid files
 function isAppropriateFileExtension(fileName = "") {
+    if (fileName.includes("node_module")){
+        return;
+    }
     let match = fileName.match(new RegExp("(?<=\\.)(html\|css)$"));
     if (match == null) {
         return false;
@@ -49,7 +52,7 @@ function findHtmlClasses(file = '') {
     if (file.endsWith("css")) {
         result = data.match(cssRx);
         for (const item of result) {
-            result += item.trim().split(";");
+            result += item.trim().split();
         }
         console.log(result);
 
