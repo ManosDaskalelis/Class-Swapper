@@ -2,6 +2,11 @@ import fs from "fs";
 import path from "path";
 import readline from "readline";
 
+let isHtmlFile = false;
+const htmlRx = new RegExp("(?<=class=([\"']))\\s*[^\"']+(?=\\1)", "gi");
+const cssRx = new RegExp("(?<=\\.[a-z]+\\s*{)\\s*[^\r\n]+[^{}]+(?=})", "gi");
+const filePathRgx = new RegExp("[a-z]+(?=\\.(html|css)$)(\\.(html|css)$)", "gi");
+
 //#region Replace css classes with tailwind or bootstrap classes
 export async function replaceClasses(file) {
     const rl = readline.createInterface({
@@ -9,27 +14,24 @@ export async function replaceClasses(file) {
         output: process.stdout
     });
 
-    const filePathRgx = new RegExp("[a-z]+(?=\\.(html|css)$)(\\.(html|css)$)", "gi");
     let files = separateDirsFromFiles(file);
-    let classes;
+    let classes = [];
     let fullPath;
 
     for (const item of files) {
-        classes = findHtmlClasses(item);
-        fullPath = item.replace(item.match(filePathRgx), "")
-
-        console.log(`\nFound ${classes} in file ${item} in folder ${fullPath}\n`);
+        classes.push(findClasses(item));
+        fullPath = item.replace(item.match(filePathRgx), "");
     }
+    compareClasses(files, classes);
     rl.question("Proceed with automatic class swapping? (y/n)\r\n", (answer) => {
-        const answerRgx = new RegExp("[y n yes no]", "i");
-        if (answer.match(answerRgx)) {
-            if (answer == "y" || answer == "yes") {
-                console.log("Proceeding");
-                rl.close();
-            } else {
-                console.log("Aborting");
-                rl.close();
-            }
+        const posRegx = new RegExp("[y YES Yes yes]", "i");
+        const negRegx = new RegExp("[NO n No no]", "i");
+        if (answer.match(posRegx)) {
+            console.log("Proceeding");
+            rl.close();
+        } else if (answer.match(negRegx)) {
+            console.log("Aborting");
+            rl.close();
         } else {
             console.log("Aborting");
             rl.close();
@@ -66,33 +68,56 @@ function isAppropriateFileExtension(fileName = "") {
 }
 //#endregion
 //#region find class names in html files 
-function findHtmlClasses(file = '') {
-    const htmlRx = new RegExp("(?<=class=([\"']))\\s*[^\"']+(?=\\1)", "gi");
-    const cssRx = new RegExp("(?<=\\.[a-z]+\\s*{)\\s*[^\r\n]+[^{}]+(?=})", "gi");
+function findClasses(file = '') {
     let result = [];
     let data = fs.readFileSync(file, "utf-8");
 
     if (file.endsWith("css")) {
+        isHtmlFile = false;
         let names = data.match(new RegExp("\\.[a-z]+(?=\\s*\\{)", "gim"));
-        console.log(names);
         for (const item of names) {
             if (data.includes(item)) {
-                result = data.match(new RegExp("(?<=" + item + "+\\s*{)\\s*[^\r\n]+[^{}]+(?=})", "gi"))
-                console.log(result);
+                result.push(data.match(new RegExp("(?<=" + item + "+\\s*{)\\s*[^\r\n]+[^{}]+(?=})", "gi")).toString().trim());
             }
         }
     } else {
-        result = [...new Set(data.match(htmlRx))];
-    }
+        isHtmlFile = true;
+        result = [...new Set(data.match(htmlRx).toString().trim().split(" "))];
+        for (const itemToRemove of result) {
 
-    return result;
+            if (itemToRemove.includes("," || ',')) {
+                let indexOfItem = itemToRemove.indexOf("," || ',');
+                result.push(itemToRemove.slice(0, indexOfItem));
+                result.splice(result.indexOf(itemToRemove), 1)
+            }
+        }
+    }
+    return [result, isHtmlFile];
 }
 //#endregion
+//#region Packs Css and Html classes together
+function compareClasses(files = [], classes) {
+    let cssFile;
+    let htmlFile;
+    let cssClasses;
+    let htmlClasses;
 
-// function compareClasses(file = "") {
+    for (const file of files) {
+        for (const className of classes) {
+            if (file.endsWith("html") && className[1] == true) {
+                htmlFile = file;
+                htmlClasses = className[0];
+                console.log(`\r\nFound: [ ${htmlClasses} ] in file: ${htmlFile}\n`);
 
-// }
-
+            } else if (file.endsWith("css") && className[1] == false) {
+                cssFile = file;
+                cssClasses = className[0];
+                console.log(`\r\nFound: [ ${cssClasses} ] in file: ${cssFile}\n`);
+            }
+        }
+    }
+}
+//#endregion
 //#region Regex builder helper function to clear code
 function regexBuilder(str, pattern) {
     const rx = new RegExp(pattern)
